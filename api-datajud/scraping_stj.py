@@ -36,11 +36,12 @@ def buscar_jurisprudencia_stj(
         numero = item.select_one(".numero-proc")
         data = item.select_one(".data-julgamento")
         link = item.select_one("a[title='Inteiro Teor']")
+        inteiro_teor_url = "https://jurisprudencia.stj.jus.br" + link["href"] if link else None
         resultados.append({
-            "Número do processo": numero.get_text(strip=True) if numero else "",
-            "Data do julgamento": data.get_text(strip=True) if data else "",
-            "Ementa": ementa.get_text(strip=True) if ementa else "",
-            "Link para inteiro teor": "https://jurisprudencia.stj.jus.br" + link["href"] if link else "",
+            "numero_processo": numero.get_text(strip=True) if numero else "",
+            "data_julgamento": data.get_text(strip=True) if data else "",
+            "ementa": ementa.get_text(strip=True) if ementa else "",
+            "inteiro_teor_url": inteiro_teor_url if inteiro_teor_url else "",
         })
     return {
         "tribunal": "STJ",

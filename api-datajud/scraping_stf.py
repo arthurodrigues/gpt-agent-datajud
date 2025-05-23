@@ -27,10 +27,14 @@ def buscar_jurisprudencia_stf(
         ementa = item.select_one(".ementaJurisprudencia")
         numero = item.select_one(".numeroProcessoJurisprudencia")
         data_julgamento = item.select_one(".dataJulgamentoJurisprudencia")
+        # Link do inteiro teor
+        link = item.select_one("a[href*='paginadorpub/paginador.jsp?docTP=AC&docID=']")
+        inteiro_teor_url = "https://redir.stf.jus.br" + link['href'] if link else ""
         resultados.append({
-            "Número do processo": numero.get_text(strip=True) if numero else "",
-            "Data do julgamento": data_julgamento.get_text(strip=True) if data_julgamento else "",
-            "Ementa": ementa.get_text(strip=True) if ementa else "",
+            "numero_processo": numero.get_text(strip=True) if numero else "",
+            "data_julgamento": data_julgamento.get_text(strip=True) if data_julgamento else "",
+            "ementa": ementa.get_text(strip=True) if ementa else "",
+            "inteiro_teor_url": inteiro_teor_url
         })
     return {
         "tribunal": "STF",

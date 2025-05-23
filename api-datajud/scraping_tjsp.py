@@ -28,10 +28,14 @@ def buscar_jurisprudencia_tjsp(
         ementa = item.select_one(".ementa")
         numero = item.select_one(".processo")
         data_julgamento = item.select_one(".data-julgamento")
+        # Busca o link do inteiro teor (PDF ou Visualizar Inteiro Teor)
+        link = item.select_one("a[href*='getArquivo.do?cdAcordao=']")
+        inteiro_teor_url = "https://esaj.tjsp.jus.br" + link['href'] if link else ""
         resultados.append({
-            "Número do processo": numero.get_text(strip=True) if numero else "",
-            "Data do julgamento": data_julgamento.get_text(strip=True) if data_julgamento else "",
-            "Ementa": ementa.get_text(strip=True) if ementa else "",
+            "numero_processo": numero.get_text(strip=True) if numero else "",
+            "data_julgamento": data_julgamento.get_text(strip=True) if data_julgamento else "",
+            "ementa": ementa.get_text(strip=True) if ementa else "",
+            "inteiro_teor_url": inteiro_teor_url
         })
     return {
         "tribunal": "TJSP",
