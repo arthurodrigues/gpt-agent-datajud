@@ -1,10 +1,7 @@
 from fastapi import FastAPI, Request
-from scraping_stj import buscar_jurisprudencia_stj
-from scraping_tjsp import buscar_jurisprudencia_tjsp
-from scraping_stf import buscar_jurisprudencia_stf
-from scraping_tjsp import consultar_processo_tjsp
-from scraping_stj import consultar_processo_stj
-from scraping_stf import consultar_processo_stf
+from scraping_stj import consultar_processo_stj, buscar_jurisprudencia_stj
+from scraping_tjsp import consultar_processo_tjsp, buscar_jurisprudencia_tjsp
+from scraping_stf import consultar_processo_stf, buscar_jurisprudencia_stf
 
 app = FastAPI(
     title="API Unificada de Consulta Processual e Jurisprudência",
@@ -51,7 +48,7 @@ async def pesquisar_jurisprudencia(request: Request):
         )
     elif tribunal == "STJ":
         resultados = buscar_jurisprudencia_stj(
-            termo_livre=palavra_chave,
+            palavra_chave=palavra_chave,
             pagina=pagina,
             tamanho=tamanho
         )
