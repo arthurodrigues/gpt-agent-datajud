@@ -1,81 +1,67 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from typing import List, Optional
-
+from fastapi import FastAPI, Request
 from scraping_stj import buscar_jurisprudencia_stj
-from scraping_stf import buscar_jurisprudencia_stf
 from scraping_tjsp import buscar_jurisprudencia_tjsp
+from scraping_stf import buscar_jurisprudencia_stf
+from scraping_tjsp import consultar_processo_tjsp
+from scraping_stj import consultar_processo_stj
+from scraping_stf import consultar_processo_stf
 
 app = FastAPI(
     title="API Unificada de Consulta Processual e Jurisprudência",
-    description="Consulta processos e jurisprudência com múltiplos filtros (STJ, STF, TJSP).",
+    description="Consulta processual e jurisprudência em STJ, TJSP e STF.",
     version="1.0.0"
 )
 
-class Jurisprudencia(BaseModel):
-    tribunal: str
-    numero_processo: Optional[str]
-    classe: Optional[str]
-    orgao_julgador: Optional[str]
-    relator: Optional[str]
-    data_julgamento: Optional[str]
-    ementa: Optional[str]
-    inteiro_teor_url: Optional[str]
+@app.post("/processos")
+async def pesquisar_processos(request: Request):
+    body = await request.json()
+    numero_processo = body.get("numero_processo")
+    tribunal = (body.get("tribunal") or "").upper()
 
-class FiltrosJurisprudencia(BaseModel):
-    tribunal: Optional[str] = None
-    palavra_chave: Optional[str] = None
-    numero_processo: Optional[str] = None
-    orgao_julgador: Optional[str] = None
-    classe: Optional[str] = None
-    data_inicio: Optional[str] = None
-    data_fim: Optional[str] = None
-    pagina: int = 1
-    tamanho: int = 5
+    if not numero_processo:
+        return {"erro": "É obrigatório informar o número do processo."}
+
+    if tribunal == "TJSP":
+        resultado = consultar_processo_tjsp(numero_processo)
+    elif tribunal == "STJ":
+        resultado = consultar_processo_stj(numero_processo)
+    elif tribunal == "STF":
+        resultado = consultar_processo_stf(numero_processo)
+    else:
+        return {"erro": "Tribunal não suportado ou não informado (use TJSP, STJ ou STF)."}
+
+    return resultado
 
 @app.post("/jurisprudencia")
-def pesquisar_jurisprudencia(filtros: FiltrosJurisprudencia):
-    resultados = []
+async def pesquisar_jurisprudencia(request: Request):
+    body = await request.json()
+    palavra_chave = body.get("palavra_chave")
+    tribunal = (body.get("tribunal") or "").upper()
+    pagina = body.get("pagina", 1)
+    tamanho = body.get("tamanho", 5)
 
-    # Chama os módulos conforme o filtro de tribunal
-    if not filtros.tribunal or filtros.tribunal.upper() == "STJ":
-        stj_result = buscar_jurisprudencia_stj(
-            termo=filtros.palavra_chave,
-            numero_processo=filtros.numero_processo,
-            classe=filtros.classe,
-            orgao_julgador=filtros.orgao_julgador,
-            data_inicio=filtros.data_inicio,
-            data_fim=filtros.data_fim,
-            pagina=filtros.pagina
-        )
-        for item in stj_result["resultados"]:
-            item["tribunal"] = "STJ"
-            resultados.append(item)
+    if not palavra_chave:
+        return {"erro": "É obrigatório informar uma palavra-chave para busca de jurisprudência."}
 
-    if not filtros.tribunal or filtros.tribunal.upper() == "STF":
-        stf_result = buscar_jurisprudencia_stf(
-            termo=filtros.palavra_chave,
-            numero_processo=filtros.numero_processo,
-            orgao_julgador=filtros.orgao_julgador,
-            data_inicio=filtros.data_inicio,
-            data_fim=filtros.data_fim,
-            pagina=filtros.pagina
+    if tribunal == "TJSP":
+        resultados = buscar_jurisprudencia_tjsp(
+            termo_livre=palavra_chave,
+            pagina=pagina,
+            tamanho=tamanho
         )
-        for item in stf_result["resultados"]:
-            item["tribunal"] = "STF"
-            resultados.append(item)
-
-    if not filtros.tribunal or filtros.tribunal.upper() == "TJSP":
-        tjsp_result = buscar_jurisprudencia_tjsp(
-            termo=filtros.palavra_chave,
-            numero_processo=filtros.numero_processo,
-            orgao_julgador=filtros.orgao_julgador,
-            data_inicio=filtros.data_inicio,
-            data_fim=filtros.data_fim,
-            pagina=filtros.pagina
+    elif tribunal == "STJ":
+        resultados = buscar_jurisprudencia_stj(
+            termo_livre=palavra_chave,
+            pagina=pagina,
+            tamanho=tamanho
         )
-        for item in tjsp_result["resultados"]:
-            item["tribunal"] = "TJSP"
-            resultados.append(item)
+    elif tribunal == "STF":
+        resultados = buscar_jurisprudencia_stf(
+            termo_livre=palavra_chave,
+            pagina=pagina,
+            tamanho=tamanho
+        )
+    else:
+        return {"erro": "Tribunal não suportado ou não informado (use TJSP, STJ ou STF)."}
 
     return {"total": len(resultados), "jurisprudencias": resultados}
