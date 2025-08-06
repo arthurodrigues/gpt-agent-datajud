@@ -18,6 +18,23 @@ from typing import Any, Dict, List, Optional
 import requests
 from bs4 import BeautifulSoup
 
+
+def _verificar_url(url: str) -> bool:
+    """Verifica se a URL retorna um código de status HTTP 200.
+
+    Esta função envia uma requisição HEAD (follow redirects) para garantir que
+    o link apontado existe e está acessível. Em caso de exceção ou código
+    diferente de 200, considera-se que o link é inválido.
+
+    :param url: URL a verificar.
+    :returns: True se o endereço for acessível, False caso contrário.
+    """
+    try:
+        resp = requests.head(url, allow_redirects=True, timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
 # API DataJud – utiliza uma chave de API configurada em variável de ambiente.
 DATAJUD_API_KEY: Optional[str] = os.getenv("DATAJUD_API_KEY")
 DATAJUD_STJ_URL: str = "https://api-publica.datajud.cnj.jus.br/api_publica_stj/_search"
@@ -170,12 +187,22 @@ def _buscar_jurisprudencia_stj(palavra_chave: str, pagina: int = 1, tamanho: int
             numero_proc = numero_proc_tag.get_text(strip=True) if numero_proc_tag else ""
             ementa_tag = item.select_one(".ementa")
             ementa = ementa_tag.get_text(strip=True) if ementa_tag else ""
+            # Link do inteiro teor pode vir como caminho relativo. Verificar diferentes domínios.
             link_tag = item.find("a", string="Inteiro Teor")
-            inteiro_teor_link = (
-                "https://scon.stj.jus.br" + link_tag.get("href")
-                if link_tag and link_tag.get("href")
-                else "Não disponível"
-            )
+            inteiro_teor_link: str
+            if link_tag and link_tag.get("href"):
+                href = link_tag.get("href")
+                # Se o href já contiver http, use diretamente
+                if href.startswith("http"):
+                    candidato = href
+                else:
+                    # Primeira tentativa: prefixo scon.stj.jus.br
+                    candidato = f"https://scon.stj.jus.br{href}"
+                # Verificar se o link retornado pelo site é acessível.
+                # Não tente adivinhar domínios alternativos; se o candidato não existir, não retorne link.
+                inteiro_teor_link = candidato if _verificar_url(candidato) else "Não disponível"
+            else:
+                inteiro_teor_link = "Não disponível"
             resultados.append(
                 {
                     "numero_processo": numero_proc,
@@ -213,7 +240,18 @@ def _buscar_jurisprudencia_stf(palavra_chave: str, pagina: int = 1, tamanho: int
             ementa_tag = bloco.find("div", class_="ementa")
             ementa = ementa_tag.get_text(strip=True) if ementa_tag else ""
             link_tag = bloco.find("a", string="Inteiro Teor")
-            jurisprudencia_url = link_tag['href'] if link_tag and link_tag.get("href") else "Não disponível"
+            jurisprudencia_url: str
+            if link_tag and link_tag.get("href"):
+                href = link_tag.get("href")
+                # Se for relativo, prefixar com domínio do STF
+                if href.startswith("http"):
+                    candidato = href
+                else:
+                    candidato = f"https://jurisprudencia.stf.jus.br{href}"
+                # Verificar se o link responde
+                jurisprudencia_url = candidato if _verificar_url(candidato) else "Não disponível"
+            else:
+                jurisprudencia_url = "Não disponível"
             resultados.append(
                 {
                     "numero_processo": numero_proc,
@@ -257,11 +295,16 @@ def _buscar_jurisprudencia_tjsp(palavra_chave: str, pagina: int = 1, tamanho: in
             ementa_tag = bloco.select_one(".ementa")
             ementa = ementa_tag.get_text(strip=True) if ementa_tag else ""
             link_tag = bloco.find("a", string="Inteiro Teor")
-            inteiro_teor_url = (
-                "https://esaj.tjsp.jus.br" + link_tag["href"]
-                if link_tag and link_tag.get("href")
-                else "Não disponível"
-            )
+            inteiro_teor_url: str
+            if link_tag and link_tag.get("href"):
+                href = link_tag.get("href")
+                if href.startswith("http"):
+                    candidato = href
+                else:
+                    candidato = f"https://esaj.tjsp.jus.br{href}"
+                inteiro_teor_url = candidato if _verificar_url(candidato) else "Não disponível"
+            else:
+                inteiro_teor_url = "Não disponível"
             resultados.append(
                 {
                     "numero_processo": numero_proc,
