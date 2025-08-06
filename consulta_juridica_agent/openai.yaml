@@ -1,0 +1,38 @@
+schema_version: 1
+
+# Nome exibido para o usuário final no ChatGPT Marketplace ou interface de ações.
+name_for_human: "Consulta Jurídica Unificada"
+
+# Identificador utilizado pelo modelo para invocar esta ação. Mantenha em minúsculo e sem espaços.
+name_for_model: "consulta_juridica_unificada"
+
+# Descrição apresentada aos usuários humanos sobre o que a ação faz.
+description_for_human: |
+  Esta ação permite consultar processos judiciais e pesquisar jurisprudência nos
+  principais tribunais brasileiros (STJ, STF e TJSP). Ela retorna informações
+  confiáveis diretamente dos bancos de dados públicos dos tribunais, como
+  número do processo, partes, classe, assunto, movimentações e links para
+  o inteiro teor das decisões. As informações são sempre extraídas de fontes
+  oficiais e nunca inventadas pela IA.
+
+# Descrição para o modelo explicar quando e como deve utilizar a ação.
+description_for_model: |
+  Use esta ação sempre que um usuário solicitar consultas processuais ou
+  pesquisas de jurisprudência relativas ao Superior Tribunal de Justiça (STJ),
+  ao Supremo Tribunal Federal (STF) ou ao Tribunal de Justiça de São Paulo
+  (TJSP). A ação executa chamadas HTTP para APIs e páginas dos tribunais e
+  retorna apenas dados verídicos; nunca invente informações. Para consultas
+  processuais, forneça o número do processo e a sigla do tribunal. Para
+  pesquisas de jurisprudência, forneça uma palavra‑chave, a sigla do
+  tribunal e, opcionalmente, o número da página e o tamanho do resultado.
+
+# Este exemplo utiliza autenticação `none` porque as rotas da API são públicas.
+auth:
+  type: none
+
+# Configuração da API. O assistente utilizará o OpenAPI exposto para gerar
+# chamadas HTTP. Substitua a URL pelo endereço público onde a API será
+# implantada. Durante o desenvolvimento local, use `http://localhost:8000/openapi.json`.
+api:
+  type: openapi
+  url: http://localhost:8000/openapi.json
