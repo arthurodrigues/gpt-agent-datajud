@@ -36,8 +36,23 @@ def _verificar_url(url: str) -> bool:
         return False
 
 # API DataJud – utiliza uma chave de API configurada em variável de ambiente.
-DATAJUD_API_KEY: Optional[str] = os.getenv("DATAJUD_API_KEY")
+#
+# A documentação oficial do DataJud explica que a autenticação é feita
+# através de uma chave pública (“API Key”) disponibilizada pelo CNJ. Essa chave
+# é exibida na página de acesso da API e pode ser alterada a qualquer momento【366122704607526†L34-L48】.
+# Para incorporar a chave nas requisições é necessário adicionar um cabeçalho
+# ``Authorization`` com o valor ``ApiKey <chave>`` – note a grafia utilizada
+# nos exemplos oficiais【513198736461717†L83-L87】. Para manter o agente funcional
+# mesmo quando nenhuma variável de ambiente está configurada, definimos abaixo
+# a chave vigente publicada na documentação pública. Caso o CNJ publique uma
+# nova chave, basta definir a variável de ambiente ``DATAJUD_API_KEY`` com
+# essa nova string.
+DEFAULT_DATAJUD_API_KEY: str = (
+    "cDZHYzlZa0JadVREZDJCendQbXY6SkJlTzNjLV9TRENyQk1RdnFKZGRQdw=="
+)
+DATAJUD_API_KEY: str = os.getenv("DATAJUD_API_KEY", DEFAULT_DATAJUD_API_KEY)
 DATAJUD_STJ_URL: str = "https://api-publica.datajud.cnj.jus.br/api_publica_stj/_search"
+DATAJUD_TJSP_URL: str = "https://api-publica.datajud.cnj.jus.br/api_publica_tjsp/_search"
 
 
 def _consultar_processo_stj(numero_processo: str) -> Optional[Dict[str, Any]]:
@@ -46,12 +61,24 @@ def _consultar_processo_stj(numero_processo: str) -> Optional[Dict[str, Any]]:
     :param numero_processo: número do processo a ser consultado.
     :returns: dicionário com dados do processo ou ``None`` se ocorrer erro.
     """
-    # Se houver chave, tente utilizar a API DataJud.
+    # Se houver chave (pode ser a fornecida na documentação ou definida pelo usuário),
+    # tente utilizar a API DataJud. De acordo com o exemplo oficial【344784192551802†L2-L4】,
+    # a pesquisa por número de processo utiliza o operador ``match`` sem precisar
+    # encapsular em ``bool``. Limitamos a ``size`` em 1 para obter apenas o
+    # primeiro documento que corresponda ao número informado.
     if DATAJUD_API_KEY:
-        must_clause = {"match": {"numeroProcesso": numero_processo}}
-        payload = {"from": 0, "size": 1, "query": {"bool": {"must": [must_clause]}}}
+        # Remover formatação (pontos, hífens) do número de processo para
+        # atender à exigência da API DataJud de usar a numeração sem formatação【264484894236365†L41-L42】.
+        numero_limpo = "".join(ch for ch in numero_processo if ch.isdigit())
+        # Consulta via API DataJud usando uma busca simples por ``numeroProcesso``. A
+        # especificação indica o uso do cabeçalho "ApiKey"【513198736461717†L83-L87】 e
+        # recomenda limitar o tamanho (size) quando se deseja apenas um documento.
+        payload = {
+            "query": {"match": {"numeroProcesso": numero_limpo or numero_processo}},
+            "size": 1,
+        }
         headers = {
-            "Authorization": f"APIKey {DATAJUD_API_KEY}",
+            "Authorization": f"ApiKey {DATAJUD_API_KEY}",
             "Content-Type": "application/json",
         }
         try:
@@ -59,18 +86,29 @@ def _consultar_processo_stj(numero_processo: str) -> Optional[Dict[str, Any]]:
             resp.raise_for_status()
             data = resp.json()
             hits = data.get("hits", {}).get("hits", [])
-            if not hits:
-                return None
-            doc = hits[0].get("_source", {})
-            return {
-                "numero_processo": doc.get("numeroProcesso"),
-                "partes": [p.get("nome") for p in doc.get("partes", [])],
-                "classe": doc.get("classeProcessual"),
-                "assunto": ", ".join([a.get("nome") for a in doc.get("assuntos", [])]) or None,
-                "movimentacoes": [m.get("movimento") for m in doc.get("andamentos", [])],
-            }
+            if hits:
+                # Extraia o primeiro documento retornado. Os campos disponíveis variam
+                # conforme o tribunal, mas os metadados básicos são comuns.
+                doc = hits[0].get("_source", {})
+                numero = doc.get("numeroProcesso")
+                classe_dict = doc.get("classe") or doc.get("classeProcessual") or {}
+                classe = classe_dict.get("nome") if isinstance(classe_dict, dict) else classe_dict
+                assuntos = doc.get("assuntos") or []
+                assunto = ", ".join([a.get("nome") for a in assuntos if isinstance(a, dict)]) or None
+                movimentos = doc.get("movimentos") or doc.get("andamentos") or []
+                movimentacoes = [m.get("nome") or m.get("movimento") for m in movimentos if isinstance(m, dict)]
+                # O DataJud não fornece as partes do processo nos exemplos públicos, portanto
+                # retornamos lista vazia para manter compatibilidade da estrutura.
+                return {
+                    "numero_processo": numero,
+                    "partes": [],
+                    "classe": classe,
+                    "assunto": assunto,
+                    "movimentacoes": movimentacoes,
+                }
         except requests.RequestException:
-            # Se falhar, caia para o scraping.
+            # Se a chamada à API falhar (por exemplo, indisponibilidade do DataJud),
+            # prosseguir com o scraping do site do STJ.
             pass
     # Fallback para scraping básico do site do STJ.
     url = f"https://processo.stj.jus.br/processo/pesquisa/?aplicacao=processos&numero_processo={numero_processo}"
@@ -133,6 +171,45 @@ def _consultar_processo_tjsp(numero_processo: str) -> Optional[Dict[str, Any]]:
     :param numero_processo: número do processo (formato CNJ) a consultar.
     :returns: dicionário com dados do processo ou ``None``.
     """
+    # Primeiro tente a API DataJud para o TJSP. Assim como no STJ, a pesquisa
+    # utiliza o campo ``numeroProcesso`` e retorna metadados básicos. Se a API
+    # falhar ou não retornar resultados, recorre-se ao scraping do ESAJ.
+    if DATAJUD_API_KEY:
+        # Remover formatação do número de processo antes de consultar a API
+        numero_limpo = "".join(ch for ch in numero_processo if ch.isdigit())
+        payload = {
+            "query": {"match": {"numeroProcesso": numero_limpo or numero_processo}},
+            "size": 1,
+        }
+        headers = {
+            "Authorization": f"ApiKey {DATAJUD_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        try:
+            resp = requests.post(DATAJUD_TJSP_URL, json=payload, headers=headers, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            hits = data.get("hits", {}).get("hits", [])
+            if hits:
+                doc = hits[0].get("_source", {})
+                numero = doc.get("numeroProcesso")
+                classe_dict = doc.get("classe") or {}
+                classe = classe_dict.get("nome") if isinstance(classe_dict, dict) else classe_dict
+                assuntos = doc.get("assuntos") or []
+                assunto = ", ".join([a.get("nome") for a in assuntos if isinstance(a, dict)]) or None
+                movimentos = doc.get("movimentos") or []
+                movimentacoes = [m.get("nome") for m in movimentos if isinstance(m, dict)]
+                return {
+                    "numero_processo": numero,
+                    "partes": [],
+                    "classe": classe,
+                    "assunto": assunto,
+                    "movimentacoes": movimentacoes,
+                }
+        except requests.RequestException:
+            # Se a API estiver indisponível, cairá para o scraping abaixo
+            pass
+    # Fallback via scraping no site ESAJ (consulta processual padrão do TJSP).
     url = "https://esaj.tjsp.jus.br/cpopg/open.do"
     params = {"gateway": "true", "numeroProcesso": numero_processo}
     headers = {"User-Agent": "Mozilla/5.0"}
